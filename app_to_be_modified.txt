@@ -43,6 +43,7 @@ import statistics
 from collections import deque
 import scipy.stats as stats
 from streamlit_autorefresh import st_autorefresh
+from attention_drop import find_attention_drop_moment
 
 # ============================================================================
 # STREAMLIT CONFIGURATION
@@ -1494,8 +1495,31 @@ def render_results():
     # Enhanced chart
     st.markdown("### 📊 Engagement Analysis (0-5 Scale)")
     fig = generate_professional_realtime_chart(st.session_state.session_data)
+    drop_info = find_attention_drop_moment(
+        st.session_state.session_data,
+        method="largest-drop",
+        threshold=0.5,
+    )
     if fig:
+        if drop_info:
+            fig.add_vline(x=drop_info["index"], line_color="#ef4444", line_dash="dash")
         st.plotly_chart(fig, use_container_width=True)
+
+    if drop_info:
+        st.markdown(
+            f"**Lowest attention at {drop_info['timestamp']} (score {drop_info['score']:.1f}/5)**"
+        )
+        max_idx = len(st.session_state.session_data) - 1
+        selected_idx = st.slider(
+            "Select presentation moment",
+            0,
+            max_idx,
+            drop_info["index"],
+        )
+        selected = st.session_state.session_data[selected_idx]
+        st.write(
+            f"Selected time: {selected['timestamp']} – Score: {selected['score']:.1f}/5"
+        )
     
     # Export options
     st.markdown("### 💾 Export & Reporting")
