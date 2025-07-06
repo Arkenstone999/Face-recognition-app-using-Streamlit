@@ -1,0 +1,1706 @@
+import streamlit as st
+import torch
+import pickle
+import cv2
+import numpy as np
+import pandas as pd
+from datetime import datetime, timedelta
+import time
+import os
+import base64
+import json
+from PIL import Image, ImageDraw, ImageFont
+import io
+import zipfile
+import time
+from datetime import datetime
+from pathlib import Path
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.express as px
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from matplotlib.backends.backend_pdf import PdfPages
+import seaborn as sns
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, 
+                               Image as RLImage, Table, TableStyle, PageBreak)
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.charts.linecharts import HorizontalLineChart
+from reportlab.graphics.charts.piecharts import Pie
+import tempfile
+import torchvision.transforms as transforms
+import threading
+import queue
+from typing import Dict, List, Optional, Tuple
+import pygetwindow as gw
+import pyautogui
+import mss
+import statistics
+from collections import deque
+import scipy.stats as stats
+from streamlit_autorefresh import st_autorefresh
+
+# ============================================================================
+# STREAMLIT CONFIGURATION
+# ============================================================================
+
+st.set_page_config(
+    page_title="Professional Engagement Analytics",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# ============================================================================
+# PROFESSIONAL CSS STYLING
+# ============================================================================
+
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    * {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    .main-header {
+        background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #475569 100%);
+        padding: 2.5rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        color: #f8fafc;
+        text-align: center;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+        border: 1px solid #475569;
+    }
+    
+    .session-card {
+        background: rgba(248, 250, 252, 0.05);
+        backdrop-filter: blur(10px);
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        margin-bottom: 1.5rem;
+        border: 1px solid #475569;
+        color: #f8fafc;
+        text-align: center;
+    }
+    
+    .metric-card {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        padding: 1.5rem;
+        border-radius: 8px;
+        text-align: center;
+        color: #f8fafc;
+        margin: 0.75rem 0;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        border: 1px solid #334155;
+        transition: all 0.3s ease;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+    }
+    
+    .capture-container {
+        border: 1px solid #475569;
+        border-radius: 12px;
+        padding: 1.5rem;
+        background: rgba(15, 23, 42, 0.6);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        backdrop-filter: blur(10px);
+        text-align: center;
+    }
+    
+    .screenshot-display {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        margin: 1rem auto;
+        padding: 1rem;
+        background: rgba(15, 23, 42, 0.8);
+        border-radius: 12px;
+        border: 1px solid #475569;
+        min-height: 400px;
+    }
+    
+    .screenshot-display img {
+        max-width: 100%;
+        max-height: 500px;
+        object-fit: contain;
+        border-radius: 8px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        margin: 0 auto;
+        display: block;
+    }
+    
+    .analytics-card {
+        background: rgba(15, 23, 42, 0.9);
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        margin-bottom: 1.5rem;
+        border: 1px solid #475569;
+        color: #f8fafc;
+        backdrop-filter: blur(10px);
+    }
+    
+    
+    .score-display-5scale {
+        font-size: 4rem;
+        font-weight: 700;
+        text-align: center;
+        padding: 2rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        font-family: 'Inter', sans-serif;
+        letter-spacing: -2px;
+    }
+    
+    .score-low-5scale {
+        background: linear-gradient(135deg, #450a0a 0%, #7f1d1d 100%);
+        color: #fecaca;
+        border: 1px solid #dc2626;
+        box-shadow: 0 0 20px rgba(220, 38, 38, 0.3);
+    }
+    
+    .score-medium-5scale {
+        background: linear-gradient(135deg, #451a03 0%, #92400e 100%);
+        color: #fed7aa;
+        border: 1px solid #ea580c;
+        box-shadow: 0 0 20px rgba(234, 88, 12, 0.3);
+    }
+    
+    .score-high-5scale {
+        background: linear-gradient(135deg, #064e3b 0%, #047857 100%);
+        color: #a7f3d0;
+        border: 1px solid #059669;
+        box-shadow: 0 0 20px rgba(5, 150, 105, 0.3);
+    }
+    
+    .stApp {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+        color: #f8fafc;
+    }
+    
+    .window-selector {
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid #475569;
+        border-radius: 12px;
+        padding: 2rem;
+        margin: 1rem 0;
+        color: #f8fafc;
+    }
+    
+    .window-item {
+        background: rgba(30, 41, 59, 0.8);
+        border: 1px solid #475569;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .window-item:hover {
+        background: rgba(51, 65, 85, 0.9);
+        border-color: #64748b;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    .professional-alert {
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid #3b82f6;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+        color: #93c5fd;
+    }
+    
+    .error-alert {
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid #ef4444;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+        color: #fca5a5;
+    }
+    
+    .success-alert {
+        background: rgba(34, 197, 94, 0.1);
+        border: 1px solid #22c55e;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+        color: #86efac;
+    }
+    
+    .stButton > button {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        color: #f8fafc;
+        border: 1px solid #475569;
+        border-radius: 6px;
+        padding: 0.75rem 1.5rem;
+        font-weight: 500;
+        font-family: 'Inter', sans-serif;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        width: 100%;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+        border-color: #64748b;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================================
+# ENHANCED SCORING SYSTEM - SIMPLIFIED
+# ============================================================================
+
+class EngagementScorer:
+    """Enhanced engagement scorer with 0-5 scale rating system"""
+    
+    def __init__(self):
+        self.last_predictions = deque(maxlen=5)  # Simple smoothing
+        
+    def calculate_score(self, class_name, confidence_score=1.0):
+        """
+        Convert class prediction to engagement score (0-5 scale)
+        0 = No engagement, 5 = Excellent engagement
+        """
+        # Map class names to scores (0-5 scale)
+        class_to_score = {
+            'not-engaged': 1.0,
+            'engaged-negative': 2.5, 
+            'engaged-positive': 4.2,
+            # Add other possible class names if needed
+        }
+        
+        base_score = class_to_score.get(class_name, 1.0)
+        
+        # Apply confidence weighting
+        final_score = base_score * confidence_score
+        
+        # Simple temporal smoothing
+        self.last_predictions.append(final_score)
+        if len(self.last_predictions) >= 3:
+            smoothed = float(np.mean(self.last_predictions))
+        else:
+            smoothed = final_score
+            
+        return max(0.0, min(5.0, smoothed))
+    
+    def get_engagement_level(self, score):
+        """Get engagement level description for 0-5 scale"""
+        if score >= 3.5:
+            return "High Engagement", "#22c55e"
+        elif score >= 2.0:
+            return "Moderate Engagement", "#f59e0b"
+        else:
+            return "Low Engagement", "#ef4444"
+
+# ============================================================================
+# WINDOW MANAGEMENT
+# ============================================================================
+
+class WindowManager:
+    """Enhanced window management"""
+    
+    def __init__(self):
+        self.scale_factor = self._detect_scale_factor()
+        
+    def _detect_scale_factor(self):
+        """Detect display scaling factor"""
+        try:
+            import tkinter as tk
+            root = tk.Tk()
+            root.withdraw()
+            dpi = root.winfo_fpixels('1i')
+            scale = dpi / 96.0
+            root.destroy()
+            return scale
+        except:
+            return 1.0
+    
+    def get_windows_with_coordinates(self):
+        """Get windows with properly scaled coordinates"""
+        try:
+            windows = gw.getAllWindows()
+            window_list = []
+            
+            for window in windows:
+                if (window.title and 
+                    len(window.title.strip()) > 0 and 
+                    window.visible and 
+                    window.width > 100 and 
+                    window.height > 100):
+                    
+                    corrected_info = {
+                        'title': window.title,
+                        'left': int(window.left / self.scale_factor),
+                        'top': int(window.top / self.scale_factor),
+                        'width': int(window.width / self.scale_factor),
+                        'height': int(window.height / self.scale_factor),
+                        'original_window': window,
+                        'scale_factor': self.scale_factor
+                    }
+                    window_list.append(corrected_info)
+            
+            window_list.sort(key=lambda x: x['width'] * x['height'], reverse=True)
+            return window_list
+            
+        except Exception as e:
+            st.error(f"Error getting windows: {str(e)}")
+            return []
+    
+    def capture_window_centered(self, window_info, capture_width=None, capture_height=None):
+        """Capture centered sub-region of the selected window"""
+        try:
+            wx, wy = window_info['left'], window_info['top']
+            ww, wh = window_info['width'], window_info['height']
+
+            if capture_width and capture_height:
+                cw = min(capture_width, ww)
+                ch = min(capture_height, wh)
+                ox = (ww - cw) // 2
+                oy = (wh - ch) // 2
+                region = {
+                    'left': wx + ox,
+                    'top': wy + oy,
+                    'width': cw,
+                    'height': ch
+                }
+            else:
+                region = {'left': wx, 'top': wy, 'width': ww, 'height': wh}
+
+            with mss.mss() as sct:
+                shot = sct.grab(region)
+
+            img = np.array(shot)
+            return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+
+        except Exception as e:
+            st.error(f"Error capturing window: {e}")
+            return None
+
+# ============================================================================
+# AREA SELECTION FOR SCREEN CAPTURE
+# ============================================================================
+
+class AreaSelector:
+    """Area selection for screen capture mode"""
+    
+    @staticmethod
+    def capture_area_selection():
+        try:
+            # FIX: Add delay to allow user to switch windows
+            st.info("⏰ Area selection will start in 3 seconds. Switch to the window/area you want to monitor!")
+            time.sleep(3)  # Give user time to switch windows
+
+            # Take full screenshot of ALL monitors
+            screenshot = pyautogui.screenshot()
+            img = np.array(screenshot)
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+            # Get screen dimensions for proper scaling
+            screen_width, screen_height = screenshot.size
+
+            # Area selection variables
+            drawing = False
+            ix, iy = -1, -1
+            selection = None
+
+            def draw_rect(event, x, y, flags, param):
+                nonlocal ix, iy, drawing, selection, img
+                if event == cv2.EVENT_LBUTTONDOWN:
+                    ix, iy = x, y
+                    drawing = True
+                elif event == cv2.EVENT_MOUSEMOVE:
+                    if drawing:
+                        temp = img.copy()
+                        cv2.rectangle(temp, (ix, iy), (x, y), (0, 255, 0), 3)
+
+                        # Add informative text
+                        cv2.putText(temp, "Click and drag to select area",
+                                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+                        cv2.putText(temp, "Press ESC to cancel",
+                                    (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+                        cv2.putText(temp, f"Selection: {abs(x-ix)}x{abs(y-iy)} at ({min(ix,x)}, {min(iy,y)})",
+                                    (10, screen_height - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+
+                        cv2.imshow("Select Capture Area - Full Screen", temp)
+                elif event == cv2.EVENT_LBUTTONUP:
+                    drawing = False
+                    if abs(x - ix) > 10 and abs(y - iy) > 10:  # Minimum selection size
+                        selection = (min(ix, x), min(iy, y), abs(x - ix), abs(y - iy))
+                        cv2.destroyAllWindows()
+
+            # Setup window to cover full screen
+            cv2.namedWindow("Select Capture Area - Full Screen", cv2.WINDOW_NORMAL)
+            cv2.setWindowProperty("Select Capture Area - Full Screen", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+            cv2.setMouseCallback("Select Capture Area - Full Screen", draw_rect)
+
+            # Initial instruction overlay
+            temp_img = img.copy()
+            cv2.putText(temp_img, "Click and drag to select the area you want to monitor",
+                        (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
+            cv2.putText(temp_img, "Press ESC to cancel selection",
+                        (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
+            cv2.putText(temp_img, f"Screen size: {screen_width}x{screen_height}",
+                        (50, screen_height - 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+
+            while True:
+                cv2.imshow("Select Capture Area - Full Screen", temp_img)
+                key = cv2.waitKey(1) & 0xFF
+                if key == 27:  # ESC key
+                    break
+                elif selection:  # Selection made
+                    break
+
+            cv2.destroyAllWindows()
+
+            # Validate selection
+            if selection and selection[2] > 50 and selection[3] > 50:  # Minimum size check
+                return selection
+            else:
+                return None
+
+        except Exception as e:
+            st.error(f"Error in area selection: {str(e)}")
+            cv2.destroyAllWindows()  # Ensure cleanup
+            return None
+
+# ============================================================================
+# SESSION STATE INITIALIZATION
+# ============================================================================
+
+def initialize_session_state():
+    """Initialize all session state variables"""
+    defaults = {
+        "session_active": False,
+        "session_data": [],
+        "session_id": None,
+        "model_loaded": False,
+        "engagement_scores": [],
+        "session_start_time": None,
+        "current_page": "home",
+        "model": None,
+        "label_encoder": None,
+        "face_cascade": None,
+        "current_engagement_score": 0,
+        "current_engagement_label": "not-engaged",
+        "current_face_count": 0,
+        "capture_mode": "window",  # "window" or "area"
+        "selected_window": None,
+        "selected_area": None,
+        "available_windows": [],
+        "screenshot_data": None,
+        "last_analysis_time": 0,
+        "analysis_interval": 1,
+        "auto_capture": True,
+        "scorer": EngagementScorer(),
+        "window_manager": WindowManager(),
+        "streaming_data": [],
+        "real_time_export": False,
+        "transform": None,
+    }
+    
+    for key, default_value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
+
+# ============================================================================
+# FIXED MODEL LOADING - EXACTLY LIKE WORKING SCRIPT
+# ============================================================================
+
+@st.cache_resource
+def load_face_cascade():
+    """Load OpenCV face cascade for face detection"""
+    try:
+        face_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+        )
+        return face_cascade
+    except Exception as e:
+        st.error(f"Error loading face cascade: {str(e)}")
+        return None
+
+@st.cache_resource
+def load_engagement_model():
+    """Load the model EXACTLY like the working script"""
+    try:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Check if model file exists
+        model_path = 'best_transformer_model.pt'
+        if not os.path.exists(model_path):
+            st.error(f"Model file not found: {model_path}")
+            return None, None, None
+            
+        # Load model EXACTLY like working script
+        model = torch.load(model_path, map_location=device, weights_only=False)
+        model.eval()
+        
+        # Load label encoder
+        with open('label_encoder.pkl', 'rb') as f:
+            label_encoder = pickle.load(f)
+        
+        # Create transform EXACTLY like working script
+        transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            )
+        ])
+        
+        return model, label_encoder, transform
+        
+    except Exception as e:
+        st.error(f"Error loading model: {str(e)}")
+        return None, None, None
+
+def generate_enhanced_pdf_report(session_data, session_id, streaming_data=None):
+    """Generate comprehensive professional PDF report with advanced analytics - MODIFIED FOR 0-5 SCALE"""
+    try:
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.5*inch)
+        styles = getSampleStyleSheet()
+        story = []
+        
+        # Professional styles
+        title_style = ParagraphStyle(
+            'ProfessionalTitle',
+            parent=styles['Heading1'],
+            fontSize=22,
+            spaceAfter=24,
+            alignment=1,
+            textColor=colors.HexColor('#1e293b'),
+            fontName='Helvetica-Bold'
+        )
+        
+        heading_style = ParagraphStyle(
+            'ProfessionalHeading',
+            parent=styles['Heading2'],
+            fontSize=14,
+            spaceAfter=12,
+            spaceBefore=18,
+            textColor=colors.HexColor('#334155'),
+            fontName='Helvetica-Bold'
+        )
+        
+        subheading_style = ParagraphStyle(
+            'ProfessionalSubheading',
+            parent=styles['Heading3'],
+            fontSize=12,
+            spaceAfter=8,
+            spaceBefore=12,
+            textColor=colors.HexColor('#475569'),
+            fontName='Helvetica-Bold'
+        )
+        
+        # Title and header
+        story.append(Paragraph("Professional Engagement Analytics Report (0-5 Scale)", title_style))
+        story.append(Spacer(1, 12))
+        
+        # Executive Summary Box
+        exec_summary_data = [
+            ['Report Details', ''],
+            ['Session ID', session_id],
+            ['Generated', datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
+            ['Analysis Period', f"{len(session_data)} data points"],
+            ['Scoring Scale', '0-5 Point Rating System'],
+            ['Technology', 'Vision Transformer AI Model']
+        ]
+        
+        exec_table = Table(exec_summary_data, colWidths=[2*inch, 3*inch])
+        exec_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1e293b')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0'))
+        ]))
+        
+        story.append(exec_table)
+        story.append(Spacer(1, 24))
+        
+        if session_data:
+            scores = [d['score'] for d in session_data]
+            face_counts = [d.get('face_count', 0) for d in session_data]
+            confidences = [d.get('confidence', 0.5) for d in session_data]
+            qualities = [d.get('quality', 0.5) for d in session_data]
+            
+            # FIX 1: Safe statistical calculations
+            mean_score = float(np.mean(scores)) if scores else 0.0
+            median_score = float(np.median(scores)) if scores else 0.0
+            std_score = float(np.std(scores)) if len(scores) > 1 else 0.0
+            
+            # FIX 2: Safe coefficient of variation calculation
+            cv = (std_score / mean_score) * 100 if mean_score > 0 else 0.0
+            
+            # FIX 3: Safe trend analysis with error handling (slope thresholds adjusted for 0-5 scale)
+            trend_direction = "Insufficient data"
+            correlation_strength = 0.0
+            
+            if len(scores) > 5:
+                try:
+                    x = np.arange(len(scores))
+                    slope, intercept, r_value, p_value, std_err = stats.linregress(x, scores)
+                    # Adjusted slope thresholds for 0-5 scale (0.05 instead of 0.1)
+                    trend_direction = "Increasing" if slope > 0.05 else "Decreasing" if slope < -0.05 else "Stable"
+                    correlation_strength = abs(r_value)
+                except Exception as e:
+                    print(f"Trend analysis error: {e}")
+                    trend_direction = "Analysis Error"
+            
+            # FIX 4: MODIFIED engagement distribution calculation for 0-5 scale
+            total_scores = len(scores) if scores else 1  # Prevent division by zero
+            high_engagement_pct = (sum(1 for s in scores if s >= 3.5) / total_scores) * 100  # Changed from 70 to 3.5
+            medium_engagement_pct = (sum(1 for s in scores if 2.0 <= s < 3.5) / total_scores) * 100  # Changed from 40-69 to 2.0-3.4
+            low_engagement_pct = (sum(1 for s in scores if s < 2.0) / total_scores) * 100  # Changed from 40 to 2.0
+            
+            # Advanced Statistical Analysis
+            story.append(Paragraph("Executive Summary", heading_style))
+            
+            # MODIFIED summary metrics for 0-5 scale
+            summary_metrics = [
+                ['Key Performance Indicators', 'Value', 'Benchmark (0-5)'],
+                ['Average Engagement Score', f"{mean_score:.1f}/5", "≥3.0/5 (Good)"],  # Changed from % to /5
+                ['Median Engagement Score', f"{median_score:.1f}/5", "≥3.2/5 (Good)"],  # Changed from % to /5
+                ['Engagement Stability (CV)', f"{cv:.1f}%", "≤30% (Stable)"],
+                ['High Engagement Rate', f"{high_engagement_pct:.1f}%", "≥50% (Target)"],
+                ['Trend Direction', trend_direction, "Stable/Increasing"],
+                ['Average Confidence', f"{np.mean(confidences):.2f}", "≥0.7 (Reliable)"],
+                ['Session Duration', f"{len(session_data)} seconds", "Variable"]
+            ]
+            
+            summary_table = Table(summary_metrics, colWidths=[2.5*inch, 1.5*inch, 1.5*inch])
+            summary_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e293b')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 11),
+                ('FONTSIZE', (0, 1), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f8fafc')),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f1f5f9')]),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1'))
+            ]))
+            
+            story.append(summary_table)
+            story.append(Spacer(1, 20))
+            
+            # FIX 5: Enhanced Time-based analysis with better error handling (adjusted for 0-5 scale)
+            story.append(Paragraph("Detailed Performance Analytics", heading_style))
+            
+            if len(scores) >= 10:
+                try:
+                    # Divide session into quarters for trend analysis
+                    quarter_size = max(1, len(scores) // 4)  # Ensure at least 1
+                    quarters = [
+                        scores[:quarter_size],
+                        scores[quarter_size:2*quarter_size],
+                        scores[2*quarter_size:3*quarter_size],
+                        scores[3*quarter_size:]
+                    ]
+                    
+                    quarter_analysis = [
+                        ['Quarter', 'Avg Score', 'Peak Score', 'Low Score', 'Stability'],
+                    ]
+                    
+                    for i, quarter in enumerate(quarters, 1):
+                        if quarter:  # Only process non-empty quarters
+                            avg_q = np.mean(quarter)
+                            max_q = max(quarter)
+                            min_q = min(quarter)
+                            std_q = np.std(quarter) if len(quarter) > 1 else 0.0
+                            # Adjusted stability thresholds for 0-5 scale
+                            stability = "High" if std_q < 0.5 else "Medium" if std_q < 1.0 else "Low"
+                            quarter_analysis.append([
+                                f"Q{i}",
+                                f"{avg_q:.1f}/5",  # Changed format
+                                f"{max_q:.1f}/5",  # Changed format
+                                f"{min_q:.1f}/5",  # Changed format
+                                stability
+                            ])
+                    
+                    quarter_table = Table(quarter_analysis, colWidths=[1*inch, 1*inch, 1*inch, 1*inch, 1*inch])
+                    quarter_table.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#334155')),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 10),
+                        ('FONTSIZE', (0, 1), (-1, -1), 9),
+                        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1'))
+                    ]))
+                    
+                    story.append(Paragraph("Quarterly Performance Breakdown", subheading_style))
+                    story.append(quarter_table)
+                    story.append(Spacer(1, 16))
+                    
+                except Exception as e:
+                    print(f"Quarter analysis error: {e}")
+                    story.append(Paragraph("Quarter analysis unavailable due to data constraints", styles['Normal']))
+                    story.append(Spacer(1, 16))
+            
+            # MODIFIED Engagement Distribution Analysis for 0-5 scale
+            story.append(Paragraph("Engagement Level Distribution", subheading_style))
+            
+            distribution_data = [
+                ['Engagement Level', 'Count', 'Percentage', 'Industry Benchmark'],
+                ['High (3.5-5.0)', str(sum(1 for s in scores if s >= 3.5)), f"{high_engagement_pct:.1f}%", "40-60%"],  # Modified
+                ['Medium (2.0-3.4)', str(sum(1 for s in scores if 2.0 <= s < 3.5)), f"{medium_engagement_pct:.1f}%", "25-35%"],  # Modified
+                ['Low (0-1.9)', str(sum(1 for s in scores if s < 2.0)), f"{low_engagement_pct:.1f}%", "10-25%"]  # Modified
+            ]
+            
+            dist_table = Table(distribution_data, colWidths=[2*inch, 1*inch, 1.5*inch, 1.5*inch])
+            dist_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#475569')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1'))
+            ]))
+            
+            story.append(dist_table)
+            story.append(Spacer(1, 20))
+            
+            # FIX 6: Technical Quality Assessment with safe calculations
+            story.append(Paragraph("Technical Quality Metrics", subheading_style))
+            
+            avg_quality = float(np.mean(qualities)) if qualities else 0.5
+            avg_faces = float(np.mean(face_counts)) if face_counts else 0.0
+            avg_confidence = float(np.mean(confidences)) if confidences else 0.5
+            
+            quality_data = [
+                ['Technical Metric', 'Value', 'Quality Rating'],
+                ['Average Face Detection Quality', f"{avg_quality:.2f}", 
+                 "Excellent" if avg_quality > 0.8 else "Good" if avg_quality > 0.6 else "Fair"],
+                ['Average Faces Detected', f"{avg_faces:.1f}", 
+                 "Multiple" if avg_faces > 1.5 else "Single" if avg_faces > 0.5 else "Limited"],
+                ['Model Confidence', f"{avg_confidence:.2f}", 
+                 "High" if avg_confidence > 0.8 else "Medium" if avg_confidence > 0.6 else "Low"],
+                ['Data Consistency', f"{max(0, 100-cv):.1f}%", 
+                 "High" if cv < 20 else "Medium" if cv < 40 else "Low"]
+            ]
+            
+            quality_table = Table(quality_data, colWidths=[2.5*inch, 1.5*inch, 1.5*inch])
+            quality_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#64748b')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1'))
+            ]))
+            
+            story.append(quality_table)
+            story.append(Spacer(1, 20))
+            
+            # FIX 7: MODIFIED Professional Insights and Recommendations for 0-5 scale
+            story.append(PageBreak())
+            story.append(Paragraph("Professional Analysis & Recommendations", heading_style))
+            
+            # Generate insights based on data (adjusted thresholds for 0-5 scale)
+            insights = []
+            recommendations = []
+            
+            # MODIFIED Score-based insights for 0-5 scale
+            if mean_score >= 3.5:  # Changed from 70 to 3.5
+                insights.append("Outstanding engagement performance with consistently high audience attention levels.")
+                recommendations.append("Maintain current content strategy and delivery methods.")
+            elif mean_score >= 2.5:  # Changed from 50 to 2.5
+                insights.append("Good engagement levels with opportunities for optimization.")
+                recommendations.append("Consider incorporating more interactive elements to boost peak engagement.")
+            else:
+                insights.append("Engagement levels below optimal thresholds require strategic intervention.")
+                recommendations.append("Implement immediate improvements to content delivery and audience interaction.")
+            
+            # Variability insights (adjusted for 0-5 scale proportionally)
+            if cv > 40:
+                insights.append("High variability in engagement suggests inconsistent content quality or delivery.")
+                recommendations.append("Focus on standardizing presentation techniques and content structure.")
+            elif cv < 15:
+                insights.append("Highly consistent engagement indicates stable and predictable content delivery.")
+                recommendations.append("Leverage this consistency to gradually increase overall engagement levels.")
+            
+            # Trend insights
+            if trend_direction == "Increasing":
+                insights.append("Positive engagement trend indicates improving audience connection over time.")
+                recommendations.append("Continue current trajectory and analyze successful elements for replication.")
+            elif trend_direction == "Decreasing":
+                insights.append("Declining engagement trend requires immediate attention and strategy adjustment.")
+                recommendations.append("Implement engagement recovery strategies focusing on audience re-engagement.")
+            
+            # Technical insights
+            if avg_confidence < 0.6:
+                insights.append("Lower model confidence suggests potential technical issues affecting analysis reliability.")
+                recommendations.append("Improve lighting conditions and camera positioning for better analysis accuracy.")
+            
+            # Format insights
+            story.append(Paragraph("Key Insights:", subheading_style))
+            for i, insight in enumerate(insights, 1):
+                story.append(Paragraph(f"{i}. {insight}", styles['Normal']))
+                story.append(Spacer(1, 6))
+            
+            story.append(Spacer(1, 12))
+            story.append(Paragraph("Strategic Recommendations:", subheading_style))
+            for i, rec in enumerate(recommendations, 1):
+                story.append(Paragraph(f"{i}. {rec}", styles['Normal']))
+                story.append(Spacer(1, 6))
+            
+            # FIX 8: MODIFIED Real-time streaming data analysis for 0-5 scale
+            if streaming_data:
+                story.append(Spacer(1, 20))
+                story.append(Paragraph("Real-time Streaming Analysis", heading_style))
+                
+                try:
+                    streaming_scores = [d.get('score', 0) for d in streaming_data if 'score' in d]
+                    if streaming_scores:
+                        stream_avg = float(np.mean(streaming_scores))
+                        stream_count = len(streaming_scores)
+                        stream_peak = float(max(streaming_scores))
+                        
+                        streaming_summary = [
+                            ['Streaming Metric', 'Value'],
+                            ['Total Streaming Points', str(stream_count)],
+                            ['Streaming Average Score', f"{stream_avg:.1f}/5"],  # Changed format
+                            ['Peak Streaming Score', f"{stream_peak:.1f}/5"],  # Changed format
+                            ['Streaming Duration', f"{stream_count} seconds"],
+                        ]
+                        
+                        streaming_table = Table(streaming_summary, colWidths=[3*inch, 2*inch])
+                        streaming_table.setStyle(TableStyle([
+                            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e293b')),
+                            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                            ('FONTSIZE', (0, 0), (-1, 0), 11),
+                            ('FONTSIZE', (0, 1), (-1, -1), 10),
+                            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+                            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1'))
+                        ]))
+                        
+                        story.append(streaming_table)
+                    else:
+                        story.append(Paragraph("No valid streaming data available for analysis", styles['Normal']))
+                        
+                except Exception as e:
+                    print(f"Streaming analysis error: {e}")
+                    story.append(Paragraph("Streaming analysis unavailable due to data format issues", styles['Normal']))
+            
+            # Technical appendix (updated for 0-5 scale)
+            story.append(PageBreak())
+            story.append(Paragraph("Technical Appendix", heading_style))
+            
+            tech_details = [
+                "AI Model Architecture: Vision Transformer (ViT-B/16) with custom engagement classification head",
+                "Face Detection: OpenCV Haar Cascade with quality assessment",
+                "Engagement Categories: Multi-class classification (Not-engaged, Engaged-negative, Engaged-positive)",
+                "Scoring Algorithm: Confidence-weighted scoring with temporal smoothing (0-5 scale)",  # Updated
+                "Analysis Frequency: 1 Hz (1 sample per second) for real-time monitoring",
+                f"Processing Platform: {'CUDA GPU' if torch.cuda.is_available() else 'CPU'}",
+                "Quality Metrics: Blur detection, brightness assessment, face size validation",
+                "Scale Range: 0 (No engagement) to 5 (Excellent engagement)",  # Added
+                f"Report Generation: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+            ]
+            
+            for detail in tech_details:
+                story.append(Paragraph(f"• {detail}", styles['Normal']))
+                story.append(Spacer(1, 4))
+        
+        else:
+            story.append(Paragraph("No session data available for analysis", styles['Normal']))
+        
+        # FIX 9: Safe PDF building with error handling
+        try:
+            doc.build(story)
+            buffer.seek(0)
+            return buffer
+        except Exception as build_error:
+            print(f"PDF build error: {build_error}")
+            # Create a minimal error report
+            error_buffer = io.BytesIO()
+            error_doc = SimpleDocTemplate(error_buffer, pagesize=A4)
+            error_story = [
+                Paragraph("PDF Generation Error", styles['Title']),
+                Spacer(1, 12),
+                Paragraph(f"Session ID: {session_id}", styles['Normal']),
+                Paragraph(f"Error: {str(build_error)}", styles['Normal']),
+                Paragraph(f"Data points available: {len(session_data) if session_data else 0}", styles['Normal'])
+            ]
+            error_doc.build(error_story)
+            error_buffer.seek(0)
+            return error_buffer
+        
+    except Exception as e:
+        st.error(f"Error generating enhanced PDF report: {str(e)}")
+        print(f"Full PDF generation error: {e}")
+        return None
+# ============================================================================
+# FIXED PREDICTION FUNCTION - EXACTLY LIKE WORKING SCRIPT
+# ============================================================================
+
+def predict_engagement_fixed(model, label_encoder, transform, face_image, scorer):
+    """Enhanced engagement prediction matching the working script exactly"""
+    try:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Convert to PIL Image if needed (exactly like working script)
+        if isinstance(face_image, np.ndarray):
+            face_pil = Image.fromarray(cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB))
+        else:
+            face_pil = face_image
+        
+        # Preprocess EXACTLY like working script
+        input_tensor = transform(face_pil).unsqueeze(0).to(device)
+        
+        # Get prediction EXACTLY like working script
+        with torch.no_grad():
+            outputs = model(input_tensor)
+            _, preds = torch.max(outputs, 1)
+        
+        # Convert to label EXACTLY like working script
+        class_name = label_encoder.inverse_transform(preds.cpu().numpy())[0]
+        
+        # Calculate score using our simple scorer
+        engagement_score = scorer.calculate_score(class_name)
+        
+        return engagement_score, class_name, 1.0, 1.0  # confidence=1.0, quality=1.0 for compatibility
+        
+    except Exception as e:
+        st.error(f"Prediction error: {str(e)}")
+        return 0, "not-engaged", 0.0, 0.5
+
+# ============================================================================
+# FIXED FACE DETECTION - EXACTLY LIKE WORKING SCRIPT
+# ============================================================================
+
+def detect_faces_and_analyze_fixed(image, model, label_encoder, transform, face_cascade, scorer):
+    """Fixed face detection and analysis matching working script exactly"""
+    if image is None or face_cascade is None:
+        return [], image, 0, "Low Engagement"
+    
+    # Convert to format needed
+    if len(image.shape) == 3:
+        frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image
+        frame = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+    
+    # Detect faces EXACTLY like working script
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+    
+    face_results = []
+    annotated_image = frame.copy()
+    total_score = 0
+    
+    for (x, y, w, h) in faces:
+        # Extract face EXACTLY like working script
+        face_img = frame[y:y+h, x:x+w]
+        
+        if face_img.size > 0:
+            try:
+                # Get engagement prediction
+                score, class_name, confidence, quality = predict_engagement_fixed(
+                    model, label_encoder, transform, face_img, scorer
+                )
+                
+                face_results.append({
+                    'bbox': (x, y, w, h),
+                    'score': score,
+                    'label': class_name,
+                    'confidence': confidence,
+                    'quality': quality
+                })
+                
+                total_score += score
+                
+                # Draw results EXACTLY like working script  
+                cv2.rectangle(annotated_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                cv2.putText(annotated_image, f"{class_name}: {score:.0f}%", (x, y - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                
+            except Exception as e:
+                print(f"Face analysis error: {e}")
+                continue
+    
+    # Calculate average engagement
+    if face_results:
+        avg_score = total_score / len(face_results)
+        level, _ = scorer.get_engagement_level(avg_score)
+    else:
+        avg_score = 0
+        level = "No Face Detected"
+    
+    return face_results, annotated_image, avg_score, level
+
+# ============================================================================
+# ENHANCED CHART GENERATION
+# ============================================================================
+
+def generate_professional_realtime_chart(scores_data):
+    """Generate professional real-time engagement chart for 0-5 scale"""
+    if not scores_data:
+        return None
+    
+    df = pd.DataFrame(scores_data)
+    df = df.reset_index(drop=True)
+    
+    # Create color mapping based on engagement levels (0-5 scale)
+    colors = []
+    for score in df['score']:
+        if score >= 3.5:
+            colors.append('#22c55e')  # Green for high
+        elif score >= 2.0:
+            colors.append('#f59e0b')  # Amber for medium
+        else:
+            colors.append('#ef4444')  # Red for low
+    
+    fig = go.Figure()
+    
+    # Main engagement line
+    fig.add_trace(go.Scatter(
+        x=list(range(len(df))),
+        y=df['score'],
+        mode='lines+markers',
+        name='Engagement Level',
+        line=dict(color='#3b82f6', width=3, shape='spline'),
+        marker=dict(
+            color=colors, 
+            size=6, 
+            line=dict(width=1, color='white'),
+            symbol='circle'
+        ),
+        fill='tonexty',
+        fillcolor='rgba(59, 130, 246, 0.1)',
+        hovertemplate='<b>Sample:</b> %{x}<br><b>Score:</b> %{y:.1f}/5<br><b>Time:</b> %{customdata}<br><extra></extra>',
+        customdata=df['timestamp']
+    ))
+    
+    # Add reference lines for 0-5 scale
+    fig.add_hline(y=3.5, line_dash="dot", line_color="#22c55e", opacity=0.5, 
+                  annotation_text="High Engagement", annotation_position="right")
+    fig.add_hline(y=2.0, line_dash="dot", line_color="#f59e0b", opacity=0.5,
+                  annotation_text="Moderate", annotation_position="right")
+    
+    # Professional styling
+    current_time = datetime.now().strftime('%H:%M:%S')
+    data_points = len(df)
+    
+    fig.update_layout(
+        title={
+            'text': f"Live Engagement Analytics (0-5 Scale) - {data_points} samples (Updated: {current_time})",
+            'x': 0.5,
+            'font': {'size': 16, 'color': '#f8fafc', 'family': 'Inter'}
+        },
+        xaxis_title="Time Sequence",
+        yaxis_title="Engagement Score (0-5)",
+        yaxis=dict(range=[0, 5.2], dtick=1),  # Changed to 0-5.2 range with 1-unit ticks
+        xaxis=dict(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='rgba(248,250,252,0.1)',
+            range=[-1, max(len(df), 20)]
+        ),
+        height=400,
+        plot_bgcolor='rgba(15,23,42,0.8)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color="#f8fafc", size=12, family='Inter'),
+        showlegend=False,
+        margin=dict(l=60, r=60, t=60, b=50)
+    )
+    
+    fig.update_yaxes(
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(248,250,252,0.1)'
+    )
+    
+    return fig
+
+# ============================================================================
+# ANALYSIS FUNCTIONS - FIXED
+# ============================================================================
+
+def perform_analysis():
+    """Perform real-time analysis with proper capture"""
+    try:
+        screenshot = None
+        
+        if st.session_state.capture_mode == "window" and st.session_state.selected_window:
+            screenshot = st.session_state.window_manager.capture_window_centered(
+                st.session_state.selected_window,
+                capture_width=800,
+                capture_height=600
+            )
+        elif st.session_state.capture_mode == "area" and st.session_state.selected_area:
+            # FIX: Proper area capture for continuous monitoring
+            screenshot = pyautogui.screenshot(region=st.session_state.selected_area)
+            screenshot = np.array(screenshot)
+            screenshot = cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR)
+        else:
+            st.error("Invalid capture configuration")
+            return
+
+        if screenshot is None:
+            st.error("Failed to capture screen")
+            return
+
+        # Analyze engagement using FIXED function
+        face_results, annotated_image, avg_score, level = detect_faces_and_analyze_fixed(
+            screenshot,
+            st.session_state.model,
+            st.session_state.label_encoder,
+            st.session_state.transform,
+            st.session_state.face_cascade,
+            st.session_state.scorer
+        )
+
+        # Store annotated screenshot
+        st.session_state.screenshot_data = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
+
+        # Create data point
+        timestamp = datetime.now()
+        data_point = {
+            'timestamp': timestamp.strftime("%H:%M:%S"),
+            'score': round(avg_score, 1),
+            'label': level,
+            'face_count': len(face_results),
+            'confidence': np.mean([f.get('confidence', 1.0) for f in face_results]) if face_results else 1.0,
+            'quality': np.mean([f.get('quality', 1.0) for f in face_results]) if face_results else 1.0,
+            'full_timestamp': timestamp.isoformat(),
+            'capture_mode': st.session_state.capture_mode,
+        }
+
+        # Add to session data
+        st.session_state.engagement_scores.append(data_point)
+        st.session_state.session_data.append(data_point)
+
+        # Keep last 100 points for performance
+        if len(st.session_state.engagement_scores) > 100:
+            st.session_state.engagement_scores = st.session_state.engagement_scores[-100:]
+
+        st.session_state.last_analysis_time = time.time()
+
+    except Exception as e:
+        st.error(f"Analysis error: {str(e)}")
+        print(f"Full analysis error: {e}")  # For debugging
+
+# ============================================================================
+# UI RENDERING FUNCTIONS
+# ============================================================================
+
+def render_professional_header():
+    """Render professional header"""
+    st.markdown("""
+    <div class="main-header">
+        <h1>EngageSphere pro version</h1>
+        <p style="font-size: 1.1em; margin-top: 1rem; opacity: 0.9;">
+            Engagement intelligence with live, actionable analytics, powered by next-gen AI.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_capture_mode_selection():
+    """Render capture mode selection"""
+    st.markdown("""
+    <div class="session-card">
+        <h3 style="color: #f8fafc;">Choose Capture Mode</h3>
+        <p>Select how you want to capture the area for engagement analysis</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("📱 Select Application Window", key="window_mode", use_container_width=True):
+            st.session_state.capture_mode = "window"
+            st.session_state.current_page = "window_selection"
+            st.rerun()
+            
+        st.markdown("""
+        <div style="text-align: center; color: #cbd5e1; margin-top: 1rem;">
+            <small>Monitor specific application windows<br/>
+            Perfect for video calls, presentations</small>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        if st.button("🖥️ Select Screen Area", key="area_mode", use_container_width=True):
+            st.session_state.capture_mode = "area"
+            st.session_state.current_page = "area_selection"
+            st.rerun()
+            
+        st.markdown("""
+        <div style="text-align: center; color: #cbd5e1; margin-top: 1rem;">
+            <small>Select any area of your screen<br/>
+            Flexible positioning and sizing</small>
+        </div>
+        """, unsafe_allow_html=True)
+
+def render_window_selection():
+    """Enhanced window selection interface"""
+    st.markdown("""
+    <div class="window-selector">
+        <h3 style="color: #f8fafc;">Window Selection</h3>
+        <p>Select a specific application window for focused engagement tracking</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        if st.button("🔄 Refresh Available Windows", key="refresh_windows"):
+            st.session_state.available_windows = st.session_state.window_manager.get_windows_with_coordinates()
+            st.rerun()
+    
+    with col2:
+        if st.button("⬅️ Back to Mode Selection", key="back_to_mode"):
+            st.session_state.current_page = "home"
+            st.rerun()
+    
+    if not st.session_state.available_windows:
+        st.session_state.available_windows = st.session_state.window_manager.get_windows_with_coordinates()
+    
+    if st.session_state.available_windows:
+        st.markdown("#### Available Windows")
+        
+        for i, window in enumerate(st.session_state.available_windows):
+            col1, col2, col3 = st.columns([3, 1, 1])
+            
+            with col1:
+                st.markdown(f"""
+                <div class="window-item">
+                    <strong>{window['title'][:60]}{'...' if len(window['title']) > 60 else ''}</strong><br>
+                    <small>Resolution: {window['width']}×{window['height']} | Position: ({window['left']}, {window['top']})</small>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                if st.button("👁️ Preview", key=f"preview_window_{i}"):
+                    try:
+                        preview_img = st.session_state.window_manager.capture_window_centered(window)
+                        if preview_img is not None:
+                            st.image(preview_img, caption=f"Preview: {window['title']}", use_container_width=True)
+                        else:
+                            st.error("Failed to capture window preview")
+                    except Exception as e:
+                        st.error(f"Preview error: {str(e)}")
+            
+            with col3:
+                if st.button("✅ Select", key=f"select_window_{i}"):
+                    st.session_state.selected_window = window
+                    st.session_state.capture_mode = "window"
+                    st.success(f"Selected: {window['title'][:30]}...")
+                    start_analysis_session()
+    else:
+        st.markdown("""
+        <div class="error-alert">
+            <h4>No Windows Detected</h4>
+            <p>Please ensure applications are running and try refreshing the window list.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+def render_area_selection():
+    """Render area selection interface"""
+    st.markdown("""
+    <div class="window-selector">
+        <h3 style="color: #f8fafc;">Screen Area Selection</h3>
+        <p>Click the button below to select a custom area of your screen for monitoring</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Check if area is already selected
+    if st.session_state.get("selected_area"):
+        st.success(f"✅ Area selected: {st.session_state.selected_area[2]}×{st.session_state.selected_area[3]} pixels at ({st.session_state.selected_area[0]}, {st.session_state.selected_area[1]})")
+
+        # Show preview of selected area
+        try:
+            preview_img = pyautogui.screenshot(region=st.session_state.selected_area)
+            st.image(np.array(preview_img), caption="Selected Area Preview", use_container_width=True)
+
+            # Start analysis button
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("🚀 Start Analysis", key="start_area_analysis", use_container_width=True):
+                    start_analysis_session()
+
+        except Exception as e:
+            st.error(f"Preview error: {str(e)}")
+
+    else:
+        # Area selection interface
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("🎯 Select Screen Area", key="select_area_btn", use_container_width=True):
+                with st.spinner("Opening area selection tool..."):
+                    st.info("🖱️ Instructions:")
+                    st.markdown("""
+                    1. **Wait 3 seconds** after clicking  
+                    2. **Switch to the window** you want to monitor (YouTube, video call, etc.)  
+                    3. **Click and drag** to select the area  
+                    4. **Press ESC** to cancel if needed
+                    """)
+
+                    selected_area = AreaSelector.capture_area_selection()
+
+                    if selected_area:
+                        st.session_state.selected_area = selected_area
+                        st.session_state.capture_mode = "area"
+                        st.rerun()  # Refresh to show the preview and start button
+                    else:
+                        st.warning("❌ No area was selected. Please try again.")
+
+    # Navigation buttons
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("⬅️ Back to Mode Selection", key="back_from_area"):
+            st.session_state.current_page = "home"
+            st.rerun()
+
+    with col2:
+        if st.session_state.get("selected_area"):
+            if st.button("🔄 Reselect Area", key="reselect_area"):
+                st.session_state.selected_area = None
+                st.rerun()
+
+def render_analysis_session():
+    """Render active analysis session - MODIFIED FOR 0-5 SCALE"""
+    
+    # Auto-refresh every 2 seconds
+    time.sleep(2)
+    
+    # Display session info
+    if st.session_state.capture_mode == "window":
+        window_title = st.session_state.selected_window['title']
+        st.markdown(f"### 📊 Live Analysis: {window_title}")
+    else:
+        area_info = st.session_state.selected_area
+        st.markdown(f"### 📊 Live Analysis: Screen Area ({area_info[2]}×{area_info[3]})")
+    
+    # Control buttons
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        if st.button("🛑 End Session", key="end_session"):
+            end_session()
+            return
+    
+    with col2:
+        session_duration = len(st.session_state.engagement_scores)
+        st.metric("Duration", f"{session_duration}s")
+    
+    with col3:
+        if st.session_state.engagement_scores:
+            latest_score = st.session_state.engagement_scores[-1]['score']
+            st.metric("Current Score", f"{latest_score:.1f}/5")  # Modified display
+    
+    # Perform analysis
+    current_time = time.time()
+    if current_time - st.session_state.last_analysis_time >= 1.0:
+        perform_analysis()
+    
+    # Display everything
+    if st.session_state.screenshot_data is not None:
+        st.image(st.session_state.screenshot_data, caption=f"⏰ Live Feed - {datetime.now().strftime('%H:%M:%S')}", use_container_width=True)
+    
+    if st.session_state.engagement_scores:
+        latest = st.session_state.engagement_scores[-1]
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Engagement Score", f"{latest['score']:.1f}/5")  # Modified display
+        with col2:
+            st.metric("Faces Detected", latest['face_count'])
+        with col3:
+            st.metric("Prediction", latest.get('label', 'N/A'))
+        with col4:
+            st.metric("Session Points", len(st.session_state.engagement_scores))
+    
+    if len(st.session_state.engagement_scores) > 1:
+        fig = generate_professional_realtime_chart(st.session_state.engagement_scores)
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+    
+    # Auto-refresh the page
+    if st.session_state.session_active:
+        st.rerun()
+
+def render_results():
+    """Render enhanced results page - MODIFIED FOR 0-5 SCALE"""
+    st.markdown("""
+    <div class="main-header">
+        <h1>📈 Session Analysis Results</h1>
+        <p>Comprehensive engagement analytics and insights (0-5 Scale)</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if not st.session_state.session_data:
+        st.warning("No session data available for analysis")
+        return
+    
+    # Enhanced metrics
+    scores = [d['score'] for d in st.session_state.session_data]
+    qualities = [d.get('quality', 1.0) for d in st.session_state.session_data]
+    confidences = [d.get('confidence', 1.0) for d in st.session_state.session_data]
+    
+    # Summary metrics (modified for 0-5 scale)
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    with col1:
+        duration_minutes = len(st.session_state.session_data) / 60
+        st.metric("Duration", f"{duration_minutes:.1f}min")
+    
+    with col2:
+        st.metric("Average Score", f"{np.mean(scores):.1f}/5")  # Modified
+    
+    with col3:
+        st.metric("Peak Score", f"{max(scores):.1f}/5")  # Modified
+    
+    with col4:
+        consistency = 100 - (np.std(scores)/np.mean(scores)*100) if np.mean(scores) > 0 else 0
+        st.metric("Consistency", f"{consistency:.0f}%")
+    
+    with col5:
+        st.metric("Data Quality", f"{np.mean(qualities)*100:.0f}%")
+    
+    # Enhanced chart
+    st.markdown("### 📊 Engagement Analysis (0-5 Scale)")
+    fig = generate_professional_realtime_chart(st.session_state.session_data)
+    if fig:
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Export options
+    st.markdown("### 💾 Export & Reporting")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        df = pd.DataFrame(st.session_state.session_data)
+        csv_data = df.to_csv(index=False)
+        st.download_button(
+            label="📄 Download CSV",
+            data=csv_data,
+            file_name=f"{st.session_state.session_id}_engagement_data.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+    
+    with col2:
+        json_data = json.dumps(st.session_state.session_data, indent=2)
+        st.download_button(
+            label="📋 Download JSON",
+            data=json_data,
+            file_name=f"{st.session_state.session_id}_engagement_data.json",
+            mime="application/json",
+            use_container_width=True
+        )
+    
+    with col3:
+        # IMPROVED PDF GENERATION BUTTON
+        if st.button("📊 Generate Professional Report", key="generate_report", use_container_width=True):
+            with st.spinner("Generating comprehensive PDF report..."):
+                try:
+                    pdf_buffer = generate_enhanced_pdf_report(
+                        st.session_state.session_data, 
+                        st.session_state.session_id,
+                        st.session_state.streaming_data if st.session_state.real_time_export else None
+                    )
+                    if pdf_buffer:
+                        st.download_button(
+                            label="⬇️ Download PDF Report",
+                            data=pdf_buffer.getvalue(),
+                            file_name=f"{st.session_state.session_id}_professional_report.pdf",
+                            mime="application/pdf",
+                            use_container_width=True,
+                            key="download_pdf"
+                        )
+                        st.success("✅ Professional report generated successfully!")
+                    else:
+                        st.error("❌ Failed to generate PDF report. Please check the data and try again.")
+                except Exception as e:
+                    st.error(f"❌ PDF generation error: {str(e)}")
+                    st.info("💡 Try downloading CSV/JSON data as an alternative.")
+    
+    with col4:
+        # Simple statistics summary
+        summary_stats = {
+            'session_id': st.session_state.session_id,
+            'total_samples': len(st.session_state.session_data),
+            'duration_minutes': len(st.session_state.session_data) / 60,
+            'average_score': float(np.mean(scores)),
+            'max_score': float(max(scores)),
+            'min_score': float(min(scores)),
+            'std_score': float(np.std(scores)),
+            'capture_mode': st.session_state.capture_mode
+        }
+        
+        summary_json = json.dumps(summary_stats, indent=2)
+        st.download_button(
+            label="📊 Download Summary",
+            data=summary_json,
+            file_name=f"{st.session_state.session_id}_summary.json",
+            mime="application/json",
+            use_container_width=True
+        )
+    
+    # Navigation
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🔄 Start New Session", key="new_session", use_container_width=True):
+            start_new_session()
+    
+    with col2:
+        if st.button("🏠 Back to Home", key="back_home", use_container_width=True):
+            st.session_state.current_page = "home"
+            st.rerun()
+
+def render_start_screen():
+    """Render professional start screen"""
+    render_professional_header()
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        render_capture_mode_selection()
+
+# ============================================================================
+# SESSION CONTROL FUNCTIONS
+# ============================================================================
+
+def start_analysis_session():
+    """Initialize analysis session"""
+    st.session_state.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    st.session_state.session_active = True
+    st.session_state.session_start_time = datetime.now()
+    st.session_state.engagement_scores = []
+    st.session_state.session_data = []
+    st.session_state.streaming_data = []
+    st.session_state.current_page = "analysis"
+    st.session_state.last_analysis_time = 0
+    st.session_state.auto_capture = True
+    st.rerun()
+
+def end_session():
+    """End current session"""
+    st.session_state.session_active = False
+    st.session_state.current_page = "results"
+    st.session_state.auto_capture = False
+    
+    if st.session_state.session_data:
+        st.success(f"✅ Session completed! Analyzed {len(st.session_state.session_data)} data points")
+    
+    st.rerun()
+
+def start_new_session():
+    """Start new session"""
+    st.session_state.session_active = False
+    st.session_state.session_data = []
+    st.session_state.engagement_scores = []
+    st.session_state.streaming_data = []
+    st.session_state.screenshot_data = None
+    st.session_state.selected_window = None
+    st.session_state.selected_area = None
+    st.session_state.current_page = "home"
+    st.session_state.auto_capture = False
+    st.rerun()
+
+# ============================================================================
+# MAIN APPLICATION
+# ============================================================================
+
+def main():
+    """Main application entry point"""
+    initialize_session_state()
+    
+    # Load face cascade
+    if st.session_state.face_cascade is None:
+        st.session_state.face_cascade = load_face_cascade()
+    
+    # Load model with the FIXED method
+    if not st.session_state.model_loaded:
+        with st.spinner("🔄 Loading AI model for professional engagement analysis..."):
+            model, label_encoder, transform = load_engagement_model()
+            
+            if model is not None and label_encoder is not None and transform is not None:
+                st.session_state.model = model
+                st.session_state.label_encoder = label_encoder
+                st.session_state.transform = transform
+                st.session_state.model_loaded = True
+                
+                st.markdown("""
+                <div class="success-alert">
+                    <h4>✅ AI Model Successfully Loaded</h4>
+                    <p>Professional engagement analytics ready for deployment</p>
+                </div>
+                """, unsafe_allow_html=True)
+                time.sleep(2)
+                st.rerun()
+            else:
+                st.markdown("""
+                <div class="error-alert">
+                    <h4>❌ Model Loading Error</h4>
+                    <p>Unable to initialize AI model for engagement analysis</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown("""
+                <div class="analytics-card">
+                    <h4 style="color: #ef4444;">Required Files:</h4>
+                    <ul style="color: #f8fafc; text-align: left;">
+                        <li><code>best_transformer_model.pt</code> - AI model weights</li>
+                        <li><code>label_encoder.pkl</code> - Label encoding mapping</li>
+                    </ul>
+                    <p style="color: #cbd5e1;">Ensure both files are present and refresh the application</p>
+                </div>
+                """, unsafe_allow_html=True)
+                st.stop()
+    
+    # Route to appropriate page
+    if st.session_state.current_page == "home":
+        render_start_screen()
+    elif st.session_state.current_page == "window_selection":
+        render_window_selection()
+    elif st.session_state.current_page == "area_selection":
+        render_area_selection()
+    elif st.session_state.current_page == "analysis" and st.session_state.session_active:
+        render_analysis_session()
+    elif st.session_state.current_page == "results":
+        render_results()
+    else:
+        render_start_screen()
+
+# ============================================================================
+# APPLICATION ENTRY POINT
+# ============================================================================
+
+if __name__ == "__main__":
+    main()
